@@ -1,0 +1,5 @@
+venv/
+libs/
+__pycache__/
+*.in
+*.txt

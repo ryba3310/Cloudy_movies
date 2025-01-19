@@ -1,0 +1,49 @@
+version: '3.1'
+
+services:
+
+  proxy_flask:
+    build:
+      context: .
+      dockerfile: Dockerfile_proxy
+    container_name: proxy_flask
+    restart: unless-stopped
+    ports:
+      - 4999:4999
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    container_name: mongo_movies
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - 27017:27017
+    networks:
+      - mongonet
+    volumes:
+      - dbdata:/data/db
+
+  mongo-express:
+    image: mongo-express
+    restart: unless-stopped
+    container_name: mongo_ui
+    ports:
+      - 8082:8081
+    environment:
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: 'True'
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password
+      ME_CONFIG_BASICAUTH: 'false'
+      ME_CONFIG_MONGODB_URL: mongodb://root:password@mongo_movies:27017/
+    networks:
+      - mongonet
+
+volumes:
+  dbdata:
+    driver: local
+
+networks:
+  mongonet:
+    driver: bridge
