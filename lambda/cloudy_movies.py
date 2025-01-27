@@ -1,8 +1,9 @@
-import requests, os, boto3, json#, awsgi
+import requests, os, boto3, json, awsgi
 from flask import Flask, request
 from pymongo import MongoClient
 from PIL import Image
 from io import BytesIO
+
 
 MONGO_URI = os.environ['MONGO_URI']
 DATABASE_NAME = os.environ['DATABASE_NAME']
@@ -17,7 +18,7 @@ PROXY_ADDRESS = '172.31.35.24:4999'
 
 
 app = Flask(__name__)
-session = boto3.Session(profile_name='cloudy-movies') # Uses profile defined in ~/.aws/credentials for AWS user
+session = boto3.Session() # Uses profile defined in ~/.aws/credentials for AWS user
 s3 = session.resource(service_name='s3')
 bucket = s3.Bucket('cloudy-movies')
 
@@ -62,7 +63,6 @@ def store_image(image_path):
     obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
     print('\tStored backrop image in s3.')
 
-
 def store_items(movies_metadata):
     results = []
     for movie in movies_metadata:
@@ -96,7 +96,7 @@ def query_tmdb(query):
     
 @app.route('/')
 def search_title():
-    collection.drop()
+    # collection.drop()
 
     if request.query_string:
         query = request.args['query']
@@ -118,5 +118,6 @@ def search_title():
 if __name__ == '__main__':      ### Use for local developent
     app.run(host='0.0.0.0', port=5003, debug=True)
 
-# def lambda_handler(event, context):       ### Use with AWS lambda 
+# def lambda_handler(event, context):       ### Use with AWS lambda
 #     return awsgi.response(app, event, context)
+
