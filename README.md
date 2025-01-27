@@ -20,16 +20,22 @@ This reposiroy stores backend and API logic, fronted is build on Minimal-flask r
 
 - ✅️  Setup MongoDB and storage bucket
 
-- ⚠️  Integrate API layer with storage layer
+- ✅️  Query TMDB if no results store in DB
+
+- ✅️  Store movie thumbnail in S3 storage
 
 - ✅️  Find workaround to avoid using AWS NAT Gateway And AWS Elastic IP
 
-- ⚠️  Integrate API layer with storage layer
+- ✅️  Integrate API layer with storage layer
 
 - ✅️  Setup flask frontend
+
+- ⚠️  Finish results pagination
 
 - ✅️  Setup serverless funtion
 
 - ⚠️  Setup Terraform IaC
 
 - ⚠️  Setup CI/CD pipeline
+
+- ⚠️  Switch to AWS DocumentDB

@@ -7,6 +7,9 @@ services:
       context: .
       dockerfile: Dockerfile_proxy
     container_name: proxy_flask
+    mem_limit: 40m
+    memswap_limit: 300m
+    mem_swappiness: 80
     restart: unless-stopped
     ports:
       - 4999:4999
@@ -15,6 +18,9 @@ services:
     image: mongo:8
     restart: unless-stopped
     container_name: mongo_movies
+    mem_limit: 50m
+    memswap_limit: 300m
+    mem_swappiness: 80
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: password
@@ -31,6 +37,9 @@ services:
     container_name: mongo_ui
     ports:
       - 8082:8081
+    mem_limit: 40m
+    memswap_limit: 300m
+    mem_swappiness: 60
     environment:
       ME_CONFIG_MONGODB_ENABLE_ADMIN: 'True'
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
