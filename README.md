@@ -40,6 +40,8 @@ This reposiroy stores backend and API logic, fronted is build on top of Minimal-
 
 - ✅️  Setup serverless funtion
 
+- ⚠️  Switch from flask proxy to AWS NAT Gateway and VPC Endpoints
+
 - ⚠️  Setup Terraform IaC
 
 - ⚠️  Setup CI/CD pipeline
