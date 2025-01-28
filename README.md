@@ -8,7 +8,7 @@ Serverless API fetches data from themoviedb.org and stores document data in Mong
 
 MongoDB and storage bucket are used for persistent storage to avoid excessive remote API calls and build movie list.
 
-This reposiroy stores backend and API logic, fronted is build on Minimal-flask repository and avialable at site.justalab.xyz
+This reposiroy stores backend and API logic, fronted is build on top of Minimal-flask repository and avialable at site.justalab.xyz
 
 
 # TODO
@@ -30,7 +30,11 @@ This reposiroy stores backend and API logic, fronted is build on Minimal-flask r
 
 - ✅️  Setup flask frontend
 
-- ⚠️  Finish results pagination
+- ✅️  Finish results pagination
+
+- ⚠️  Improve search/query code
+
+- ✅️  Retrive data from S3
 
 - ✅️  Setup serverless funtion
 
