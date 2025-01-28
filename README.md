@@ -1,3 +1,5 @@
+![cloudy_movies drawio (1)](https://github.com/user-attachments/assets/0cdb44bf-616c-4ba5-a04e-e4f862b582a4)
+
 # Cloudy movies
 
 Cloudy movies is a 3-tier application consiting of frontend page hosted inside flask, API as serverless cloud function and data tier using MongoDB and cloud bucket storage.
