@@ -34,6 +34,8 @@ This reposiroy stores backend and API logic, fronted is build on top of Minimal-
 
 - ⚠️  Improve search/query code
 
+- ⚠️  Fix timeouts on longer/bigger searches
+
 - ✅️  Retrive data from S3
 
 - ✅️  Setup serverless funtion

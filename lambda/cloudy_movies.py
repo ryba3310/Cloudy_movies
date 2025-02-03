@@ -41,13 +41,13 @@ def check_if_stored(query):
         if count < 1: # Check if we got no stored data about query
             movies_data = query_tmdb(word)
             store_items(movies_data['results'])
-        if len(word) > 2 and count < 3: # Check if is more complex query and got low results count
+        if len(word) > 2 and count < 10: # Check if it is more complex query and got low results count
             movies_data = query_tmdb(word)
             store_items(movies_data['results'])
-            
-        stored_movies = collection.find(find).to_list()
+
+        stored_movies = collection.find(find).sort({ 'vote_avg': -1 }).to_list()
         results += stored_movies
-    
+
     results = json.dumps(results, default=str) # necessary for flask
     return results
 
@@ -66,7 +66,7 @@ def store_image(image_path):
 def store_items(movies_metadata):
     results = []
     for movie in movies_metadata:
-        image_path = movie['backdrop_path'] 
+        image_path = movie['backdrop_path']
         if not image_path:
             print('\tNo backdrop image, skipping...')
             continue
@@ -77,9 +77,9 @@ def store_items(movies_metadata):
         print('\t[store_items]Inserting data')
         movie_id = movie['id']
         movie_url_name = movie['original_title'].replace(' ', '-')
-        document = {'movie_id': movie['id'], 
-                    'name': movie['original_title'], 
-                    'overview': movie['overview'], 
+        document = {'movie_id': movie['id'],
+                    'name': movie['original_title'],
+                    'overview': movie['overview'],
                     'img_path': movie['backdrop_path'],
                     'tmdb_page': f'{MOVIE_INFO}{movie_id}-{movie_url_name}',
                     'vote_avg': str(movie['vote_average'])}
@@ -93,7 +93,7 @@ def query_tmdb(query):
     response = requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
     print('\tRecieved data and storing in db')
     return response.json()
-    
+
 @app.route('/')
 def search_title():
     # collection.drop()
@@ -111,8 +111,6 @@ def search_title():
 
         return results, 200
 
-    # for my_bucket_object in bucket.objects.all():
-    #     return str(my_bucket_object), 200
     return 'Got no query string', 200
 
 if __name__ == '__main__':      ### Use for local developent
