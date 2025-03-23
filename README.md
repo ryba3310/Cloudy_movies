@@ -13,6 +13,35 @@ MongoDB and storage bucket are used for persistent storage to avoid excessive re
 This reposiroy stores backend and API logic, fronted is build on top of Minimal-flask repository and avialable at site.justalab.xyz
 
 
+# How to run it
+
+Copy this repository and cd to it
+
+```git clone https://github.com/ryba3310/Cloudy_movies.git && cd cloudy_movies```
+
+Run proxy and NoQL containers
+
+```docker-compose up -d --build```
+
+Create funtion zip wth libraries to upload to AWS Lambda
+
+```mkdir func && pip install -r lambda/requirements.txt -t func && cp lambda/cloudy_movie.py func/lambda_function.py && zip -r func.zip func/*```
+
+Upload function zip to AWS S3
+
+```aws s3api put-object --bucket cloudy-movies  --key func.zip --body func.zip```
+
+Pull func.zip from S3 to AWS Lambda
+
+```aws lambda update-function-code --function-name cloudy_movies --s3-bucket cloudy-movies --s3-key func.zip```
+
+Start your own frontend with query string in URL or deploy Minimal-Flask repository:
+
+```cd && git clone https://github.com/ryba3310/Minimal_flask.git && cd Minimal_flask && docker-compose up -d --build```
+
+Frontend should be accessibe on port 5000, please keep in mind the connection is insecure and it's good practice to expose it via some reverse proxy.
+
+
 # TODO
 
 
@@ -22,7 +51,7 @@ This reposiroy stores backend and API logic, fronted is build on top of Minimal-
 
 - ✅️  Setup MongoDB and storage bucket
 
-- ✅️  Query TMDB if no results store in DB
+- ✅️  Query TMDB if no results are stored in DB
 
 - ✅️  Store movie thumbnail in S3 storage
 
@@ -34,13 +63,19 @@ This reposiroy stores backend and API logic, fronted is build on top of Minimal-
 
 - ✅️  Finish results pagination
 
+- ⚠️  Update README with instructions
+
+- ⚠️  Create AWS CLI setup
+
 - ⚠️  Improve search/query code
 
-- ⚠️  Fix timeouts on longer/bigger searches
+- ✅️  Fix timeouts on longer/bigger searches
 
 - ✅️  Retrive data from S3
 
 - ✅️  Setup serverless funtion
+
+- ✅️  Refactor the code
 
 - ⚠️  Switch from flask proxy to AWS NAT Gateway and VPC Endpoints
 

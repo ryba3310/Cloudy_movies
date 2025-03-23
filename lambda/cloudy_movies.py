@@ -3,25 +3,24 @@ from flask import Flask, request
 from pymongo import MongoClient
 from PIL import Image
 from io import BytesIO
+from bson import json_util
 
 
 MONGO_URI = os.environ['MONGO_URI']
 DATABASE_NAME = os.environ['DATABASE_NAME']
 ACCESS_TOKEN = os.environ['TMDB_TOKEN']
+PROXY_ADDRESS = os.environ['PROXY_ADDRESS']
 API_URL = 'https://api.themoviedb.org'
 IMAGE_URL = 'https://image.tmdb.org/t/p/original'
 SEARCH_ENDPOINT = '/3/search/movie?query='
 MOVIE_ENDPOINT = '/3/movie/'
 MOVIE_INFO = 'https://www.themoviedb.org/movie/'
-PROXY_ADDRESS = '172.31.35.24:4999'
-
 
 
 app = Flask(__name__)
-session = boto3.Session() # Uses profile defined in ~/.aws/credentials for AWS user
+session = boto3.Session() # Uses profile defined in ~/.aws/credentials for AWS user or other environment variables, more in doc
 s3 = session.resource(service_name='s3')
 bucket = s3.Bucket('cloudy-movies')
-
 
 
 client = MongoClient(MONGO_URI)
@@ -29,29 +28,49 @@ db = client[DATABASE_NAME]
 collection = db['movies']
 
 
-
-def check_if_stored(query):
-    query_words = query.split()
+def check_if_stored(query_words):
+    """Returns list of stored movies data or False"""
     results = []
     for word in query_words:
+        print(f'\t[check_if_stored] Checking db for word: {word}')
         find = { '$or': [
             {'name': {'$regex': f'.*{word}.*', '$options': 'i'}},
             {'overview': {'$regex': f'.*{word}.*','$options': 'i'}}]}
         count = collection.count_documents(find)
-        if count < 1: # Check if we got no stored data about query
-            movies_data = query_tmdb(word)
-            store_items(movies_data['results'])
-        if len(word) > 2 and count < 10: # Check if it is more complex query and got low results count
-            movies_data = query_tmdb(word)
-            store_items(movies_data['results'])
+        print(f'\t[check_if_stored] Found {count} movies in db')
 
+        if count < 1: # Check if we got no stored data about query
+            return False
+        #if len(query_words) > 2 and count < 2: # Check if it is more complex query and got low results count
+        #    return False
         stored_movies = collection.find(find).sort({ 'vote_avg': -1 }).to_list()
         results += stored_movies
 
     results = json.dumps(results, default=str) # necessary for flask
     return results
 
+
+def get_movies(query_words):
+    """Return list of movies dictionaries"""
+    stored_movies = check_if_stored(query_words)
+    results = []
+    if stored_movies:
+        print('\t[get_movies]Returnig data from DB')
+        return stored_movies
+    # If not stored get data from TMDB
+    print('\t[get_movies]Nothing found in DB trying TMDB API')
+    for word in query_words:
+        results += store_items(query_tmdb(word))
+
+        print('\t[get_movies]Adding results')
+
+    print('\t[get_movies]Returning results')
+    print(results)
+    return results
+
+
 def store_image(image_path):
+    """Store images in S3 bucket using ByteStram instead of file on disk"""
     obj = bucket.Object('movies' + image_path)
     upload_file_stream = BytesIO()
     print('\tPulling image')
@@ -63,16 +82,13 @@ def store_image(image_path):
     obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
     print('\tStored backrop image in s3.')
 
+
 def store_items(movies_metadata):
     results = []
     for movie in movies_metadata:
         image_path = movie['backdrop_path']
         if not image_path:
-            print('\tNo backdrop image, skipping...')
-            continue
-        search_result = collection.find({'movie_id': movie['id'] }).to_list()
-        if search_result:
-            print('\t[store_items]Found the movie in db, skipping...')
+            print('\t[store_items]No backdrop image, skipping...')
             continue
         print('\t[store_items]Inserting data')
         movie_id = movie['id']
@@ -83,33 +99,37 @@ def store_items(movies_metadata):
                     'img_path': movie['backdrop_path'],
                     'tmdb_page': f'{MOVIE_INFO}{movie_id}-{movie_url_name}',
                     'vote_avg': str(movie['vote_average'])}
-        collection.insert_one(document)
-        print('\tStoring imgae in s3')
-        store_image(image_path)
+        search_result = collection.find({'movie_id': movie['id'] }).to_list()
+        if search_result:
+            print('\t[store_items]Found the movie in db, skipping...')
+            results.append(document)
+            continue
         results.append(document)
+        print('\t[store_items]Inserting document into db...')
+        collection.insert_one(document)
+        store_image(image_path)
+        document.pop('_id', None)
     return results
 
+
 def query_tmdb(query):
+    """Query TMDB though proxy container to bypass spawning NAT gateway in VPC"""
+    print(f'Sending requests to TMDB with query: {query}')
     response = requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
-    print('\tRecieved data and storing in db')
-    return response.json()
+    print('\t[query_task]Recieved data and proceeding to store in db')
+    response_json = response.json()['results']
+    if len(response_json) > 5:
+        return response_json[:5]
+    return response_json
 
 @app.route('/')
 def search_title():
-    # collection.drop()
+    #collection.drop()
 
     if request.query_string:
         query = request.args['query']
-        stored_data = check_if_stored(query)
-        if stored_data:
-            print('\tReturnig data from DB')
-            return stored_data, 200
-        print('\tNothing found in DB trying TMDB API')
-
-        movies_metadata = query_tmdb(query)
-        results = store_items(movies_metadata['results'])
-
-        return results, 200
+        stored_data = get_movies(query.split())
+        return stored_data, 200
 
     return 'Got no query string', 200
 
