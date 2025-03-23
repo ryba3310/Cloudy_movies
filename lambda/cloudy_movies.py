@@ -3,7 +3,6 @@ from flask import Flask, request
 from pymongo import MongoClient
 from PIL import Image
 from io import BytesIO
-from bson import json_util
 
 
 MONGO_URI = os.environ['MONGO_URI']
@@ -15,7 +14,7 @@ IMAGE_URL = 'https://image.tmdb.org/t/p/original'
 SEARCH_ENDPOINT = '/3/search/movie?query='
 MOVIE_ENDPOINT = '/3/movie/'
 MOVIE_INFO = 'https://www.themoviedb.org/movie/'
-MAX_RES_RESULTS = 5
+MAX_RES_RESULTS = 10
 
 
 app = Flask(__name__)
@@ -41,11 +40,10 @@ def check_if_stored(query_words):
         count += collection.count_documents(find)
         print(f'\t[check_if_stored] Found {count} movies in db')
 
-#################FIX and SPLIT#################
         if count < 1: # Check if we got no stored data about query
             return False
-        if len(query_words) > 3 and count < 5: # Check if it is more complex query and got low results count
-            MAX_RES_RESULTS = 15
+        if len(query_words) > 2 and count < 10: # Check if it is more complex query and got low results count
+            MAX_RES_RESULTS = 25
             return False
         stored_movies = collection.find(find).sort({ 'vote_avg': -1 }).to_list()
         results += stored_movies
@@ -126,9 +124,10 @@ def query_tmdb(query):
         return response_json[:MAX_RES_RESULTS]
     return response_json
 
+
 @app.route('/')
 def search_title():
-    collection.drop()
+#    collection.drop()
 
     if request.query_string:
         query = request.args['query']
@@ -137,9 +136,11 @@ def search_title():
 
     return 'Got no query string', 200
 
-if __name__ == '__main__':      ### Use for local developent
-    app.run(host='0.0.0.0', port=5003, debug=True)
 
-# def lambda_handler(event, context):       ### Use with AWS lambda
-#     return awsgi.response(app, event, context)
+#if __name__ == '__main__':      ### Use for local developent
+#    app.run(host='0.0.0.0', port=5003, debug=True)
+
+
+def lambda_handler(event, context):       ### Use with AWS lambda
+    return awsgi.response(app, event, context)
 

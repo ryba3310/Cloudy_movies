@@ -27,19 +27,6 @@ Create funtion zip wth libraries to upload to AWS Lambda
 
 ```mkdir func && pip install -r lambda/requirements.txt -t func && cp lambda/cloudy_movie.py func/lambda_function.py && zip -r func.zip func/*```
 
-Upload function zip to AWS S3
-
-```aws s3api put-object --bucket cloudy-movies  --key func.zip --body func.zip```
-
-Pull func.zip from S3 to AWS Lambda
-
-```aws lambda update-function-code --function-name cloudy_movies --s3-bucket cloudy-movies --s3-key func.zip```
-
-Start your own frontend with query string in URL or deploy Minimal-Flask repository:
-
-```cd && git clone https://github.com/ryba3310/Minimal_flask.git && cd Minimal_flask && docker-compose up -d --build```
-
-Frontend should be accessibe on port 5000, please keep in mind the connection is insecure and it's good practice to expose it via some reverse proxy.
 
 
 # TODO
@@ -65,7 +52,7 @@ Frontend should be accessibe on port 5000, please keep in mind the connection is
 
 - ⚠️  Update README with instructions
 
-- ⚠️  Create AWS CLI setup
+- ✅️  Create AWS lambda deployment script
 
 - ⚠️  Improve search/query code
 
