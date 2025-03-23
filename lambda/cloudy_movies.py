@@ -15,6 +15,7 @@ IMAGE_URL = 'https://image.tmdb.org/t/p/original'
 SEARCH_ENDPOINT = '/3/search/movie?query='
 MOVIE_ENDPOINT = '/3/movie/'
 MOVIE_INFO = 'https://www.themoviedb.org/movie/'
+MAX_RES_RESULTS = 5
 
 
 app = Flask(__name__)
@@ -31,22 +32,25 @@ collection = db['movies']
 def check_if_stored(query_words):
     """Returns list of stored movies data or False"""
     results = []
+    count = 0
     for word in query_words:
         print(f'\t[check_if_stored] Checking db for word: {word}')
         find = { '$or': [
             {'name': {'$regex': f'.*{word}.*', '$options': 'i'}},
             {'overview': {'$regex': f'.*{word}.*','$options': 'i'}}]}
-        count = collection.count_documents(find)
+        count += collection.count_documents(find)
         print(f'\t[check_if_stored] Found {count} movies in db')
 
+#################FIX and SPLIT#################
         if count < 1: # Check if we got no stored data about query
             return False
-        #if len(query_words) > 2 and count < 2: # Check if it is more complex query and got low results count
-        #    return False
+        if len(query_words) > 3 and count < 5: # Check if it is more complex query and got low results count
+            MAX_RES_RESULTS = 15
+            return False
         stored_movies = collection.find(find).sort({ 'vote_avg': -1 }).to_list()
         results += stored_movies
 
-    results = json.dumps(results, default=str) # necessary for flask
+    results = json.dumps(results, default=str) # necessary to convert BSON doc into string recognized as JSON
     return results
 
 
@@ -118,13 +122,13 @@ def query_tmdb(query):
     response = requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
     print('\t[query_task]Recieved data and proceeding to store in db')
     response_json = response.json()['results']
-    if len(response_json) > 5:
-        return response_json[:5]
+    if len(response_json) > MAX_RES_RESULTS:
+        return response_json[:MAX_RES_RESULTS]
     return response_json
 
 @app.route('/')
 def search_title():
-    #collection.drop()
+    collection.drop()
 
     if request.query_string:
         query = request.args['query']
