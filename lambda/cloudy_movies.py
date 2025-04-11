@@ -1,8 +1,11 @@
-import requests, os, boto3, json, awsgi
+import requests, os, boto3, json, awsgi, sys
 from flask import Flask, request
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 from PIL import Image
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
+from tenacity import retry, stop_after_attempt, wait_exponential
+import logging
 
 
 MONGO_URI = os.environ['MONGO_URI']
@@ -14,7 +17,15 @@ IMAGE_URL = 'https://image.tmdb.org/t/p/original'
 SEARCH_ENDPOINT = '/3/search/movie?query='
 MOVIE_ENDPOINT = '/3/movie/'
 MOVIE_INFO = 'https://www.themoviedb.org/movie/'
-MAX_RES_RESULTS = 10
+MAX_RES_RESULTS = 10 # THis variable controls number of results pulled from TMDB query
+
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+sh = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter('[%(asctime)s] %(levelname)s [%(filename)s.%(funcName)s:%(lineno)d] %(message)s', datefmt='%a, %d %b %Y %H:%M:%S')
+sh.setFormatter(formatter)
+logger.addHandler(sh)
 
 
 app = Flask(__name__)
@@ -31,22 +42,30 @@ collection = db['movies']
 def check_if_stored(query_words):
     """Returns list of stored movies data or False"""
     results = []
+    regex_conditions = []
     count = 0
-    for word in query_words:
-        print(f'\t[check_if_stored] Checking db for word: {word}')
-        find = { '$or': [
-            {'name': {'$regex': f'.*{word}.*', '$options': 'i'}},
-            {'overview': {'$regex': f'.*{word}.*','$options': 'i'}}]}
-        count += collection.count_documents(find)
-        print(f'\t[check_if_stored] Found {count} movies in db')
 
-        if count < 1: # Check if we got no stored data about query
-            return False
-        if len(query_words) > 2 and count < 10: # Check if it is more complex query and got low results count
-            MAX_RES_RESULTS = 25
-            return False
-        stored_movies = collection.find(find).sort({ 'vote_avg': -1 }).to_list()
-        results += stored_movies
+    # Build a single query with all words
+    for word in query_words:
+        regex_conditions.append({'name': {'$regex': f'.*{word}.*', '$options': 'i'}})
+        regex_conditions.append({'overview': {'$regex': f'.*{word}.*', '$options': 'i'}})
+
+    find_query = {'$or': regex_conditions}
+    logger.info(f'\t Checking db for word: {word}')
+    count = collection.count_documents(find_query)
+    logger.info(f'\t Found {count} movies in db')
+
+    if count < 1: # Check if we got no stored data about query
+        return False
+
+    # Adjust MAX_RES_RESULTS if needed
+    global MAX_RES_RESULTS
+    if len(query_words) > 2 and count < 10:
+        MAX_RES_RESULTS = 25
+        return False
+
+    stored_movies = collection.find(find_query).sort({ 'vote_avg': -1 }).to_list()
+    results += stored_movies
 
     results = json.dumps(results, default=str) # necessary to convert BSON doc into string recognized as JSON
     return results
@@ -57,42 +76,55 @@ def get_movies(query_words):
     stored_movies = check_if_stored(query_words)
     results = []
     if stored_movies:
-        print('\t[get_movies]Returnig data from DB')
+        logger.info('\tReturnig data from DB')
         return stored_movies
     # If not stored get data from TMDB
-    print('\t[get_movies]Nothing found in DB trying TMDB API')
+    logger.info('\tNothing found in DB trying TMDB API')
     for word in query_words:
         results += store_items(query_tmdb(word))
 
-        print('\t[get_movies]Adding results')
+        logger.info('\tAdding results')
 
-    print('\t[get_movies]Returning results')
-    print(results)
+    logger.info(f'\tReturning results:\n{results}')
     return results
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def store_image(image_path):
     """Store images in S3 bucket using ByteStram instead of file on disk"""
-    obj = bucket.Object('movies' + image_path)
-    upload_file_stream = BytesIO()
-    print('\tPulling image')
-    image = Image.open(requests.get(f'http://{PROXY_ADDRESS}/proxy_img?url={IMAGE_URL}{image_path}', stream=True).raw)
-    image_format = image.format # format: JPG, PNG, etc.
-    image.save(upload_file_stream, image_format)
-    upload_file_stream.seek(0) # move to beginning of file
-    print('\tConverted image to bytes, format: ' + image_format)
-    obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
-    print('\tStored backrop image in s3.')
+    try:
+        obj = bucket.Object('movies' + image_path)
+        #if obj.content_length:  # Check if image already exists
+        #    logger.info(f'\tImage {image_path} already exists in S3, skipping...')
+        #    return
+        logger.info('\tPulling image')
+        with requests.get(f'http://{PROXY_ADDRESS}/proxy_img?url={IMAGE_URL}{image_path}', stream=True) as req:
+            with Image.open(req.raw) as image:
+                upload_file_stream = BytesIO()
+                image_format = image.format
+                image.save(upload_file_stream, image_format)
+                upload_file_stream.seek(0) # move to beginning of file to store it
+                logger.info('\tConverted image to bytes, format: ' + image_format)
+                obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
+                logger.info('\tUploaded backrop image in s3.')
+    except Exception as e:
+        logger.info(f'\tError storing image for {image_path}: {str(e)}')
+    finally:
+        if 'upload_file_stream' in locals():
+            upload_file_stream.close()
 
 
 def store_items(movies_metadata):
     results = []
+    bulk_operation = []
+    image_paths = []
+
     for movie in movies_metadata:
-        image_path = movie['backdrop_path']
-        if not image_path:
-            print('\t[store_items]No backdrop image, skipping...')
+        if not movie['backdrop_path']:
+            logger.info('\tNo backdrop image, skipping...')
             continue
-        print('\t[store_items]Inserting data')
+
+        image_paths.append(movie['backdrop_path'])
         movie_id = movie['id']
         movie_url_name = movie['original_title'].replace(' ', '-')
         document = {'movie_id': movie['id'],
@@ -101,24 +133,40 @@ def store_items(movies_metadata):
                     'img_path': movie['backdrop_path'],
                     'tmdb_page': f'{MOVIE_INFO}{movie_id}-{movie_url_name}',
                     'vote_avg': str(movie['vote_average'])}
+
+        # Check if the movie is already stored
         search_result = collection.find({'movie_id': movie['id'] }).to_list()
         if search_result:
-            print('\t[store_items]Found the movie in db, skipping...')
+            logger.info('\tFound the movie in db, skipping...')
             results.append(document)
             continue
+
+        # Build results from parsed data and items inserted
         results.append(document)
-        print('\t[store_items]Inserting document into db...')
-        collection.insert_one(document)
-        store_image(image_path)
-        document.pop('_id', None)
+        bulk_operation.append(UpdateOne(
+                {'movie_id': movie_id},
+                {'$setOnInsert': document},
+                upsert=True
+            )
+        )
+
+    logger.info('\tInserting document into db...')
+    if bulk_operation:
+        collection.bulk_write(bulk_operation)
+
+    # Store images using parallel processing
+    if image_paths:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            executor.map(store_image, image_paths)
+
     return results
 
 
 def query_tmdb(query):
     """Query TMDB though proxy container to bypass spawning NAT gateway in VPC"""
-    print(f'Sending requests to TMDB with query: {query}')
+    logger.info(f'\tSending requests to TMDB with query: {query}')
     response = requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
-    print('\t[query_task]Recieved data and proceeding to store in db')
+    logger.info('\tRecieved data and proceeding to store in db')
     response_json = response.json()['results']
     if len(response_json) > MAX_RES_RESULTS:
         return response_json[:MAX_RES_RESULTS]
@@ -127,7 +175,7 @@ def query_tmdb(query):
 
 @app.route('/')
 def search_title():
-#    collection.drop()
+    collection.drop()
 
     if request.query_string:
         query = request.args['query']
