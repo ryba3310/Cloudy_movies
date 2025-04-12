@@ -23,9 +23,9 @@ Run proxy and NoQL containers
 
 ```docker-compose up -d --build```
 
-Create funtion zip wth libraries to upload to AWS Lambda
+Create funtion zip wth libraries and upload it to S3 bucket(remeber to update variables in script)
 
-```mkdir func && pip install -r lambda/requirements.txt -t func && cp lambda/cloudy_movie.py func/lambda_function.py && zip -r func.zip func/*```
+```./deploy_lambda.sh```
 
 
 
@@ -50,7 +50,7 @@ Create funtion zip wth libraries to upload to AWS Lambda
 
 - ✅️  Finish results pagination
 
-- ⚠️  Update README with instructions
+- ✅️  Update README with instructions
 
 - ✅️  Create AWS lambda deployment script
 
@@ -68,6 +68,6 @@ Create funtion zip wth libraries to upload to AWS Lambda
 
 - ⚠️  Setup Terraform IaC
 
-- ⚠️  Setup CI/CD pipeline
+- ✅️  Setup CI/CD pipeline
 
 - ⚠️  Switch to AWS DocumentDB

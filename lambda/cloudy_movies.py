@@ -15,7 +15,6 @@ IMAGE_URL = 'https://image.tmdb.org/t/p/original'
 SEARCH_ENDPOINT = '/3/search/movie?query='
 MOVIE_ENDPOINT = '/3/movie/'
 MOVIE_INFO = 'https://www.themoviedb.org/movie/'
-MAX_RES_RESULTS = 10 # THis variable controls number of results pulled from TMDB query
 
 
 logger = logging.getLogger()
@@ -56,10 +55,7 @@ def check_if_stored(query_words):
     if count < 1: # Check if we got no stored data about query
         return False
 
-    # Adjust MAX_RES_RESULTS if needed
-    global MAX_RES_RESULTS
     if len(query_words) > 2 and count < 10:
-        MAX_RES_RESULTS = 25
         return False
 
     stored_movies = collection.find(find_query).sort({ 'vote_avg': -1 }).to_list()
@@ -72,19 +68,16 @@ def check_if_stored(query_words):
 def get_movies(query_words):
     """Return list of movies dictionaries"""
     stored_movies = check_if_stored(query_words)
-    results = []
     if stored_movies:
         logger.info('\tReturnig data from DB')
         return stored_movies
     # If not stored get data from TMDB
     logger.info('\tNothing found in DB trying TMDB API')
     for word in query_words:
-        results += store_items(query_tmdb(word))
+        store_items(query_tmdb(word))
+        logger.info('\tStored results in DB')
 
-        logger.info('\tAdding results')
-
-    logger.debug(f'\tReturning results:\n{results}')
-    return results
+    return check_if_stored(query_words)
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -116,8 +109,7 @@ def store_image(image_path):
                 ExtraArgs={
                     'ACL': 'public-read',
                     'ContentType': content_type
-                }
-            )
+                })
 
     except Exception as e:
         print(f'\tError storing image {image_path}: {str(e)}')
@@ -152,7 +144,6 @@ def store_items(movies_metadata):
             continue
 
         # Build results from parsed data and items inserted
-        results.append(document)
         operations.append(UpdateOne(
                 {'movie_id': movie_id},
                 {'$setOnInsert': document},
@@ -172,8 +163,6 @@ def store_items(movies_metadata):
         with ThreadPoolExecutor(max_workers=5) as executor:
             executor.map(store_image, image_paths)
 
-    return results
-
 
 def query_tmdb(query):
     """Query TMDB though proxy container to bypass spawning NAT gateway in VPC"""
@@ -183,7 +172,7 @@ def query_tmdb(query):
                           headers={'Authorization': f'Bearer {ACCESS_TOKEN}'}) as res:
             res.raise_for_status()
             logger.info('\tRecieved data and proceeding to store in db')
-            return res.json()['results'][:MAX_RES_RESULTS]
+            return res.json()['results']
     except requests.exceptions.RequestException as e:
         print(f"TMDB API request failed: {str(e)}")
         return []
@@ -191,7 +180,7 @@ def query_tmdb(query):
 
 @app.route('/')
 def search_title():
-#    collection.drop()
+    collection.drop()
 
     if request.query_string:
         query = request.args['query']
