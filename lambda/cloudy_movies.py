@@ -94,9 +94,6 @@ def store_image(image_path):
     """Store images in S3 bucket using ByteStram instead of file on disk"""
     try:
         obj = bucket.Object('movies' + image_path)
-        #if obj.content_length:  # Check if image already exists
-        #    logger.info(f'\tImage {image_path} already exists in S3, skipping...')
-        #    return
         logger.info('\tPulling image')
         with requests.get(f'http://{PROXY_ADDRESS}/proxy_img?url={IMAGE_URL}{image_path}', stream=True) as req:
             with Image.open(req.raw) as image:
@@ -106,7 +103,7 @@ def store_image(image_path):
                 upload_file_stream.seek(0) # move to beginning of file to store it
                 logger.info('\tConverted image to bytes, format: ' + image_format)
                 obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
-                logger.info('\tUploaded backrop image in s3.')
+                logger.info('\tUploaded backrop image to S3.')
     except Exception as e:
         logger.info(f'\tError storing image for {image_path}: {str(e)}')
     finally:
@@ -165,17 +162,20 @@ def store_items(movies_metadata):
 def query_tmdb(query):
     """Query TMDB though proxy container to bypass spawning NAT gateway in VPC"""
     logger.info(f'\tSending requests to TMDB with query: {query}')
-    response = requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
-    logger.info('\tRecieved data and proceeding to store in db')
-    response_json = response.json()['results']
-    if len(response_json) > MAX_RES_RESULTS:
-        return response_json[:MAX_RES_RESULTS]
-    return response_json
+    try:
+        with requests.get(f'http://{PROXY_ADDRESS}/proxy?url={API_URL}{SEARCH_ENDPOINT}{query}', 
+                          headers={'Authorization': f'Bearer {ACCESS_TOKEN}'}) as res:
+            res.raise_for_status()
+            logger.info('\tRecieved data and proceeding to store in db')
+            return res.json()['results'][:MAX_RES_RESULTS]
+    except requests.exceptions.RequestException as e:
+        print(f"TMDB API request failed: {str(e)}")
+        return []
 
 
 @app.route('/')
 def search_title():
-    collection.drop()
+#    collection.drop()
 
     if request.query_string:
         query = request.args['query']
