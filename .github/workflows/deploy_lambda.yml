@@ -1,0 +1,55 @@
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+name: Cloudy movies API and DB
+
+jobs:
+  #  build:
+  #    env:
+  #      LAMBDA_VPCE: "https://x05n5zw6a2.execute-api.eu-north-1.amazonaws.com/dev/"
+  #    runs-on: ubuntu-latest
+  #    strategy:
+  #      max-parallel: 4
+  #      matrix:
+  #        python-version: [3.11.11, 3.10.16, 3.12.8]
+  #
+  #    steps:
+  #    - uses: actions/checkout@v2
+  #    - name: Set up Python ${{ matrix.python-version }}
+  #      uses: actions/setup-python@v1
+  #      with:
+  #        python-version: ${{ matrix.python-version }}
+  #
+  #    - name: Install Dependencies
+  #      run: |
+  #        python -m pip install --upgrade pip
+  #        pip install -r requirements.txt
+  #
+  #    - name: Run Tests
+  #      run: |
+  #        python -m pytest
+
+  deploy:
+    name: Deploy Lambda and Docker containers
+    runs-on: ubuntu-latest
+    environment: HOST
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Deploy Lambda function using script
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        port: 22
+        script: |
+          /home/admin/cloudy_movies/deploy_lambda.sh
+          /home/admin/cloudy_movies/deploy_docker.sh
+          
+
