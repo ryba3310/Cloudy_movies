@@ -1,8 +1,6 @@
 import requests, os, boto3, json, awsgi, sys
 from flask import Flask, request
 from pymongo import MongoClient, UpdateOne
-from PIL import Image
-from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
@@ -85,7 +83,7 @@ def get_movies(query_words):
 
         logger.info('\tAdding results')
 
-    logger.info(f'\tReturning results:\n{results}')
+    logger.debug(f'\tReturning results:\n{results}')
     return results
 
 
@@ -93,27 +91,42 @@ def get_movies(query_words):
 def store_image(image_path):
     """Store images in S3 bucket using ByteStram instead of file on disk"""
     try:
+        # Check if already exists
         obj = bucket.Object('movies' + image_path)
-        logger.info('\tPulling image')
-        with requests.get(f'http://{PROXY_ADDRESS}/proxy_img?url={IMAGE_URL}{image_path}', stream=True) as req:
-            with Image.open(req.raw) as image:
-                upload_file_stream = BytesIO()
-                image_format = image.format
-                image.save(upload_file_stream, image_format)
-                upload_file_stream.seek(0) # move to beginning of file to store it
-                logger.info('\tConverted image to bytes, format: ' + image_format)
-                obj.upload_fileobj(upload_file_stream, ExtraArgs={'ACL':'public-read'})
-                logger.info('\tUploaded backrop image to S3.')
+        try:
+            obj.load()  # Check if exists
+            logger.info(f'\tImage {image_path} exists, skipping')
+            return
+        except:
+            pass  # Doesn't exist, proceed
+
+        # Stream directly from source to S3
+        with requests.get(
+            f'http://{PROXY_ADDRESS}/proxy_img?url={IMAGE_URL}{image_path}',
+            stream=True
+        ) as r:
+            r.raise_for_status()
+
+            # Get content type from response or image
+            content_type = r.headers.get('content-type', 'image/jpeg')
+
+            # Upload directly from stream
+            obj.upload_fileobj(
+                r.raw,
+                ExtraArgs={
+                    'ACL': 'public-read',
+                    'ContentType': content_type
+                }
+            )
+
     except Exception as e:
-        logger.info(f'\tError storing image for {image_path}: {str(e)}')
-    finally:
-        if 'upload_file_stream' in locals():
-            upload_file_stream.close()
+        print(f'\tError storing image {image_path}: {str(e)}')
+        raise
 
 
 def store_items(movies_metadata):
     results = []
-    bulk_operation = []
+    operations = []
     image_paths = []
 
     for movie in movies_metadata:
@@ -140,7 +153,7 @@ def store_items(movies_metadata):
 
         # Build results from parsed data and items inserted
         results.append(document)
-        bulk_operation.append(UpdateOne(
+        operations.append(UpdateOne(
                 {'movie_id': movie_id},
                 {'$setOnInsert': document},
                 upsert=True
@@ -148,8 +161,11 @@ def store_items(movies_metadata):
         )
 
     logger.info('\tInserting document into db...')
-    if bulk_operation:
-        collection.bulk_write(bulk_operation)
+    if operations:
+        try:
+            collection.bulk_write(operations, ordered=False)
+        except BulkWriteError as bwe:
+            logger.info(f"\tBulk write error: {bwe.details}")
 
     # Store images using parallel processing
     if image_paths:
