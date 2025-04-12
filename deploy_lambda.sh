@@ -2,9 +2,13 @@
 
 S3_BUCKET='cloudy-movies'
 FUNCTION_NAME='cloudy_movies'
+REPO_NAME='cloudy_movies'
 
 #Create S3 bucket
 aws s3api create-bucket --no-cli-pager --bucket "$S3_BUCKET"
+
+# Change cwd to repository
+cd "$HOME/$REPO_NAME"
 
 # Create function zip to upload
 [ -d func ] || mkdir func && pip install -r lambda/requirements.txt -t func && cp lambda/cloudy_movies.py func/lambda_function.py && (cd func && zip -r ../func.zip ./*)
